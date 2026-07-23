@@ -1,0 +1,77 @@
+# CCIE Collaboration v3.1 — Design blueprint, decoded into items
+# 15 design items (D1–D15) mapped to all 7 blueprint domains.
+exam: CCIE Collaboration v3.1
+module: Design (Module 1)
+totals:
+  items: 15
+  scenario_questions: 60
+  matrix_items: 6
+  drag_and_drop_items: 4
+  source_anchored: 100%
+domains:
+  - name: "Domain 1 — Protocols & APIs"
+    weight: "10%"
+    items:
+      - id: D1
+        title: "DTMF Relay & Media Interworking Design"
+        file: items/D1-dtmf-relay-media-interworking-design.yaml
+      - id: D2
+        title: "Collaboration APIs: AXL, UDS & SOAP Tooling"
+        file: items/D2-collaboration-apis-axl-uds-soap-tooling.yaml
+      - id: D9
+        title: "SIP Signaling & Session Identity Design"
+        file: items/D9-sip-signaling-session-identity-design.yaml
+      - id: D10
+        title: "Media Negotiation & Path Optimization Design"
+        file: items/D10-media-negotiation-path-optimization-design.yaml
+  - name: "Domain 2 — Infrastructure & QoS"
+    weight: "10%"
+    items:
+      - id: D3
+        title: "QoS & Call Admission Control Design"
+        file: items/D3-qos-call-admission-control-design.yaml
+  - name: "Domain 3 — Call Control & Dial Plan"
+    weight: "20%"
+    items:
+      - id: D6
+        title: "Webex Calling Routing: AA, Queues, Hunt Groups & Licensing"
+        file: items/D6-webex-calling-routing-aa-queues-hunt-groups-lice.yaml
+      - id: D11
+        title: "Global Dial Plan & UCM Call Routing Design"
+        file: items/D11-global-dial-plan-ucm-call-routing-design.yaml
+      - id: D12
+        title: "CUBE Dial-Peers, Normalization & Survivability Design"
+        file: items/D12-cube-dial-peers-normalization-survivability-desi.yaml
+  - name: "Domain 4 — Endpoints & User Management"
+    weight: "10%"
+    items:
+      - id: D5
+        title: "Identity: SSO, Directory Sync & User Onboarding"
+        file: items/D5-identity-sso-directory-sync-user-onboarding.yaml
+      - id: D13
+        title: "Endpoint Registration & Security Design"
+        file: items/D13-endpoint-registration-security-design.yaml
+  - name: "Domain 5 — Edge Services"
+    weight: "20%"
+    items:
+      - id: D4
+        title: "Webex Calling: PSTN, Local Gateway, Dedicated Instance & UCM Interconnect"
+        file: items/D4-webex-calling-pstn-local-gateway-dedicated-insta.yaml
+      - id: D7
+        title: "Edge: CUBE Multi-Tenancy, IPsec, Video Mesh & Expressway Clustering"
+        file: items/D7-edge-cube-multi-tenancy-ipsec-video-mesh-express.yaml
+  - name: "Domain 6 — Media Resources & Meetings"
+    weight: "15%"
+    items:
+      - id: D14
+        title: "Media Resources & Meeting Security Design"
+        file: items/D14-media-resources-meeting-security-design.yaml
+  - name: "Domain 7 — Collaboration Apps & Services"
+    weight: "15%"
+    items:
+      - id: D8
+        title: "Contact Center: WxCC, Digital Channels & UCCX Positioning"
+        file: items/D8-contact-center-wxcc-digital-channels-uccx-positi.yaml
+      - id: D15
+        title: "Collab Apps: Voicemail, IM&P, Mobility & Recording Design"
+        file: items/D15-collab-apps-voicemail-im-p-mobility-recording-de.yaml

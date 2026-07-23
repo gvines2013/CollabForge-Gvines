@@ -1,0 +1,132 @@
+id: D3
+domain: "Domain 2 — Infrastructure & QoS"
+title: "QoS & Call Admission Control Design"
+item_types:
+  scenario_qa: 4
+  matrix: []
+  drag_and_drop: []
+objectives:
+  - "Build the collaboration QoS policy from MQC primitives — and size the LLQ with real math"
+  - "Place trust boundaries and state measurable targets per path"
+  - "Layer UCM ELCAC and CUBE CAC without double-counting bandwidth"
+topics:
+  - n: 1
+    title: "The MQC model: classify → act → attach"
+    concept: "Every IOS-XE QoS design is three building blocks. class-map answers 'which traffic?' (match dscp ef, match access-group, match protocol). policy-map answers 'what happens to it?' (priority = LLQ, bandwidth = CBWFQ guarantee, police, shape, set = re-mark, random-detect = WRED). service-policy attaches the policy to an interface, in or out. Hierarchy nests them: a parent shaper creates back-pressure so a child queuing policy can work on sub-rate circuits."
+    bullets:
+      - "class-map = classification only; policy-map = actions; service-policy = attachment."
+      - "priority (LLQ) = strict priority WITH built-in policer — voice can't starve the link."
+      - "bandwidth = minimum guarantee under congestion (CBWFQ), no cap."
+      - "Parent shape + child queue = the standard design for 'carrier gives 50 Mb on a GigE'."
+    worked_example: "Skeleton: class-map VOICE match dscp ef / policy-map CHILD class VOICE priority percent 33; class VIDEO bandwidth percent 25 / policy-map PARENT class class-default shape average 50000000, service-policy CHILD / interface Gi0/0/0 service-policy output PARENT. Read it bottom-up in exam diagrams: attachment → shaper → queues."
+    exam_angle: "Items show a policy fragment and ask what's wrong — usually a child queue with no parent shaper on a sub-rate circuit."
+  - n: 2
+    title: "The collaboration marking plan — with LLQ sizing math"
+    concept: "Cisco's collaboration QoS model (RFC 4594-based): voice bearer EF/46 into the LLQ; interactive video AF41/34 into a guaranteed CBWFQ class with DSCP WRED; signaling CS3/24 small but protected; meetings/streaming AF31–AF21; scavenger CS1 capped at ~1%. The LLQ is sized with arithmetic, not vibes: busy-hour concurrent calls × per-call bandwidth for the negotiated codec including L3 overhead."
+    bullets:
+      - "G.711 ≈ 80 kb/s per call at L3 (64k payload + RTP/UDP/IP); G.729 ≈ 24–26 kb/s."
+      - "LLQ = BHCC × per-call rate + headroom; the priority policer enforces it."
+      - "Video class sized per PA bandwidth tables (resolution/fps dependent)."
+      - "Signaling needs little (CS3, e.g., 2–5%) but must never be best-effort."
+    worked_example: "Site with 60 staff, BHCC 10 concurrent G.711 calls: LLQ = 10 × 80 kb/s = 800 kb/s → priority 1000 kb/s with headroom. Same site on G.729: 10 × 26 = 260 kb/s. This number must MATCH the ELCAC location bandwidth (topic 4) — when they disagree, admitted calls exceed the queue and every call degrades. That coupling is the exam's favorite trap."
+    exam_angle: "Be ready to do the multiplication live and to spot LLQ ≠ CAC mismatches in a two-exhibit item."
+  - n: 3
+    title: "Trust boundaries, marking points & quality targets"
+    concept: "Marking is only trustworthy where you control it. The trust boundary sits at the access edge: the switch extends trust to the phone via LLDP-MED/CDP (voice VLAN, phone marks EF), PCs behind the phone are re-marked to best effort. At WAN ingress you re-classify if site policy differs. Against this you state measurable targets — the numbers a Design-module answer is expected to quote."
+    bullets:
+      - "Enterprise voice targets: ≤150 ms one-way latency, ≤30 ms jitter, ≤1% loss."
+      - "Local Gateway → Webex Calling cloud: ≤100 ms one-way, ≤10 ms jitter, ≤0.5% loss."
+      - "LLDP-MED assigns voice VLAN + tells the phone what DSCP to use."
+      - "Conditional trust: trust the phone, not the PC behind it."
+    worked_example: "Exam-style exhibit: a site marks all traffic EF at the WAN router 'to be safe'. Why is that wrong? Because the LLQ policer now polices business data along with voice — drops hit everything, and voice loses its protection. Correct: trust boundary at access, EF only for RTP from phones, re-mark everything else."
+    exam_angle: "Quote the LGW link targets verbatim (100/10/0.5) — they come straight from the Local Gateway guide and appear in cloud-calling designs."
+  - n: 4
+    title: "UCM Enhanced Locations CAC + AAR"
+    concept: "QoS protects admitted calls; CAC decides whether to admit. ELCAC models the WAN as locations (sites) connected by links, each with audio/video/immersive bandwidth pools. Every call between locations debits the pools; when empty, the call is denied. Denial without a fallback is a user-visible failure — so AAR (Automated Alternate Routing) reroutes the denied call over the PSTN automatically, using globalized +E.164 routing."
+    bullets:
+      - "Locations & links = logical topology; LBM (Location Bandwidth Manager) does the accounting."
+      - "Intercluster ELCAC: LBM hub group replicates the topology between clusters."
+      - "AAR needs: AAR groups, AAR CSS on phones, globalized PSTN routes — forget one and reroute silently fails."
+      - "Pool sizes must equal the QoS queue math from topic 2."
+    worked_example: "Site A location: audio pool 800 kb/s, calls counted at 80 kb/s (G.711) → 10 concurrent admitted. Call 11: denied by LBM → AAR kicks in → UCM globalizes the called DN to +E.164, routes via the caller's local PSTN gateway. User hears normal ringback, never knows. Without AAR CSS: user hears reorder — and the design item asks why."
+    exam_angle: "'Out of bandwidth, what does the caller experience?' depends entirely on whether AAR is fully designed — the three prerequisites are the answer."
+  - n: 5
+    title: "CUBE CAC & the layering rule"
+    concept: "ELCAC sees the enterprise WAN, but it cannot see the provider trunk or the SBC's own health. CUBE CAC fills that gap with three families: per-dial-peer/tenant max-conn (concurrent call caps), global call thresholds (CPU, memory, total-calls — new calls rejected when the box is hot), and call spike protection (rate limiting INVITE bursts). The layering rule: each layer guards its own segment; never count the same bandwidth twice, and document which layer rejects first."
+    bullets:
+      - "max-conn on dial-peer/tenant = contractual trunk cap (e.g., 100 sessions bought)."
+      - "call threshold global cpu-avg/total-mem = self-protection under load."
+      - "call spike = absorbs robocall/failover bursts before they hit UCM."
+      - "Rejected at CUBE = SIP 503 to provider; design states the retry/overflow behavior."
+    worked_example: "Contract: 100 concurrent PSTN sessions. Config: 'max-conn 100' on the outbound dial-peer (or per tenant), 'call spike 30 size 1000' to absorb bursts, thresholds at cpu-avg 80%. Layering: ELCAC admits a WAN call → CUBE admits it to the trunk → provider takes it. A 101st PSTN call is CUBE's rejection (503/busy-out to alternate trunk), NOT an ELCAC event — exam items ask which layer rejected."
+    exam_angle: "Given a failure ('calls fail only to PSTN at peak'), identify the rejecting layer: trunk cap (CUBE) vs WAN pool (ELCAC) vs queue drops (QoS)."
+decide_fast:
+  - requirement: "Sub-rate WAN circuit"
+    answer: "Parent shaper + child LLQ/CBWFQ"
+  - requirement: "Enterprise WAN admission"
+    answer: "ELCAC + AAR (3 prerequisites)"
+  - requirement: "Provider trunk cap"
+    answer: "CUBE max-conn per dial-peer/tenant"
+  - requirement: "INVITE burst / TDoS"
+    answer: "Call spike + thresholds"
+  - requirement: "LGW → Webex cloud link"
+    answer: "≤100 ms / 10 ms / 0.5% targets"
+scenario:
+  customer_ask: "40-site hub-and-spoke WAN, centralized UCM, video-enabled, 100 contracted PSTN sessions at the hub CUBE. At peak, spoke users report choppy audio and occasional fast-busy to the PSTN."
+  model_answer:
+    - "Per spoke: parent shape to CIR, child policy LLQ sized BHCC × codec rate, AF41 video class, CS3 signaling."
+    - "ELCAC location pools set EQUAL to the LLQ math; AAR groups + AAR CSS + globalized routes for denial reroute."
+    - "Hub CUBE: max-conn 100 (contract), call spike + CPU/memory thresholds; 503 behavior documented."
+    - "Diagnosis mapping: choppy audio = LLQ undersized vs ELCAC pool; fast-busy = trunk cap at CUBE, not WAN CAC."
+questions:
+  - id: Q1
+    type: multi_select
+    stem: "ELCAC admits 12 calls but the LLQ is sized for 10. What do users experience and which design rule was violated?"
+    options:
+      - text: "All 12 calls degrade — the LLQ policer drops EF across every flow"
+        correct: true
+      - text: "Loss is per-packet, so it is distributed across all streams"
+        correct: true
+      - text: "Violated rule: CAC admission math must equal the LLQ queue math"
+        correct: true
+      - text: "Only calls 11 and 12 will sound bad"
+        correct: false
+  - id: Q2
+    type: multi_select
+    stem: "Write the three MQC constructs (and hierarchy) for 'guarantee voice priority within a 50 Mb/s service on a GigE'."
+    options:
+      - text: "Child policy-map: class VOICE / priority <rate>"
+        correct: true
+      - text: "Parent policy-map: class-default / shape average 50 Mb/s with nested child"
+        correct: true
+      - text: "Attach with service-policy output on the GigE"
+        correct: true
+      - text: "A flat policy with 'priority' attached directly to the GigE"
+        correct: false
+  - id: Q3
+    type: multi_select
+    stem: "List the three AAR prerequisites without which a CAC denial becomes a reorder tone."
+    options:
+      - text: "AAR groups assigned (derive the PSTN prefix between sites)"
+        correct: true
+      - text: "An AAR CSS that can reach globalized PSTN route patterns"
+        correct: true
+      - text: "Globalized +E.164 external masks / routing"
+        correct: true
+      - text: "Enabling the AAR service parameter alone"
+        correct: false
+  - id: Q4
+    type: multi_select
+    stem: "Why does a correctly designed ELCAC deployment still need CUBE CAC? Name the two things ELCAC cannot see."
+    options:
+      - text: "The provider trunk's contractual / purchased session limit"
+        correct: true
+      - text: "The SBC platform's own health (CPU, memory, INVITE burst)"
+        correct: true
+      - text: "The enterprise WAN location bandwidth (ELCAC already models this)"
+        correct: false
+      - text: "The endpoints' codec preference order"
+        correct: false
+sources:
+  - "Design Module Training Guide, Module D3 (Cisco Learning — CCIE Collaboration)"
+  # Anchor every answer to the current Cisco doc — the exam source of truth.

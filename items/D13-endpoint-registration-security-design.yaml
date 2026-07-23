@@ -1,0 +1,128 @@
+id: D13
+domain: "Domain 4 — Endpoints & User Management"
+title: "Endpoint Registration & Security Design"
+item_types:
+  scenario_qa: 4
+  matrix: []
+  drag_and_drop: []
+objectives:
+  - "Trace endpoint registration on-prem, via MRA, and to the cloud."
+  - "Explain Security By Default — CTL, ITL and TVS — and how trust is bootstrapped."
+  - "Design mixed mode for encrypted signalling/media and know when it is required."
+  - "Choose SIP OAuth vs CAPF/LSC for endpoint authentication and certificate lifecycle."
+topics:
+  - n: 1
+    title: "Registration paths: on-prem TFTP, MRA, cloud"
+    concept: "An endpoint must find its config and call agent. On-prem it uses DHCP option 150 → TFTP for its config file then registers to UCM. MRA uses service discovery (_collab-edge / _cisco-uds SRV) through Expressway. Cloud devices register to Webex."
+    bullets:
+      - "DHCP opt 150 (or Alternate TFTP) points the phone at the TFTP/UCM nodes."
+      - "MRA: external _collab-edge SRV → Expressway-E → C → UCM; no VPN needed."
+      - "Hybrid endpoints can be UCM-registered yet Webex-managed — define the calling anchor explicitly."
+    worked_example: "Home-office phones won't register. External DNS lacked the _collab-edge SRV, so MRA service discovery failed. Publishing the SRV record restores registration with no VPN."
+    exam_angle: "'Remote phone can't register, no VPN' = MRA SRV/Expressway service-discovery design."
+  - n: 2
+    title: "Security By Default: CTL, ITL and TVS"
+    concept: "SBD secures phone trust automatically. The Identity Trust List (ITL) is signed by the UCM TFTP (ITLRecovery/CallManager) and tells the phone which servers to trust; the Certificate Trust List (CTL) is used in mixed mode; the Trust Verification Service (TVS) lets a phone verify unknown certificates without a CTL token."
+    bullets:
+      - "ITL is installed on first contact and pins the phone to the cluster's trust anchors."
+      - "TVS answers 'can I trust this cert?' so phones accept new services without re-tokening."
+      - "ITL/CTL mismatches after a cluster change cause 'config/registration rejected' until reset."
+    worked_example: "After a publisher rebuild phones show 'No trust list installed' and fail config. The ITL signer changed; deleting the stale ITL (or using ITLRecovery) re-establishes trust cluster-wide."
+    exam_angle: "Post-migration 'trust list' or 'config rejected' symptoms are ITL/CTL/TVS questions."
+  - n: 3
+    title: "Mixed mode: encrypted signalling and media"
+    concept: "Mixed mode enables authenticated/encrypted device security profiles (TLS signalling + SRTP media). It requires the CTL established via the Tokenless CTL (CLI) or USB eTokens and per-device encrypted security profiles."
+    bullets:
+      - "Mixed mode is required for SRTP/TLS to endpoints and for some compliance mandates."
+      - "Device security profile (Encrypted) + LSC is what actually secures a given phone."
+      - "Plan certificate lifecycle (CAPF) before flipping mixed mode at scale."
+    worked_example: "A compliance requirement mandates encrypted calls. Enable mixed mode, assign encrypted device security profiles, and issue LSCs via CAPF; verify SRTP with 'show' on the gateway/phone."
+    exam_angle: "If the requirement says 'encrypted signalling AND media to phones', mixed mode is mandatory, not optional."
+  - n: 4
+    title: "SIP OAuth vs CAPF/LSC"
+    concept: "Endpoint authentication can use certificates (LSC issued by CAPF) or tokens. SIP OAuth lets endpoints authenticate with OAuth tokens (from the IdP) instead of an LSC, simplifying secure registration — especially over MRA without CAPF certificate enrolment."
+    bullets:
+      - "CAPF issues/renews the LSC that identifies a phone; the LSC underpins encrypted profiles and 802.1X."
+      - "SIP OAuth uses refresh/access tokens so phones register securely without an LSC — great for MRA."
+      - "Choose per requirement: certificate-based identity (LSC) vs token-based (OAuth) — and plan renewal either way."
+    worked_example: "Securing MRA phones via CAPF over the edge was painful. Enabling SIP OAuth lets Jabber/phones register with tokens, removing the LSC enrolment hurdle while keeping TLS."
+    exam_angle: "'Secure MRA registration without certificate enrolment' points to SIP OAuth; encrypted-profile identity points to CAPF/LSC."
+  - n: 5
+    title: "Hardening endpoints: 802.1X, TVS scaling, lifecycle"
+    concept: "Beyond registration, endpoints are hardened with 802.1X (using the LSC as the supplicant identity), disabled web/SSH access, and a planned certificate lifecycle so nothing expires silently."
+    bullets:
+      - "LSC = device identity for 802.1X and encrypted security profiles."
+      - "Disable unused phone services (web access, PC port, SSH) per security policy."
+      - "Track CAPF/LSC and ITLRecovery expiry — expired trust anchors brick registration."
+    worked_example: "Phones drop off the network at a site running 802.1X after an LSC expired. A CAPF renewal schedule and monitoring prevent the silent expiry that caused the outage."
+    exam_angle: "Lifecycle items test that you plan renewal of LSC/ITLRecovery/CTL, not just initial enrolment."
+decide_fast:
+  - requirement: "Remote phone, no VPN"
+    answer: "MRA via Expressway + _collab-edge SRV"
+  - requirement: "Phone shows 'no trust list'"
+    answer: "Fix ITL/TVS (ITLRecovery)"
+  - requirement: "Encrypted signalling + media to phones"
+    answer: "Mixed mode + encrypted profile + LSC"
+  - requirement: "Secure MRA without cert enrolment"
+    answer: "SIP OAuth (token-based)"
+  - requirement: "802.1X device identity"
+    answer: "CAPF-issued LSC"
+scenario:
+  customer_ask: "A regulated customer needs encrypted calls to phones, secure remote registration without VPN, and recently saw phones fail after a UCM publisher rebuild. Design registration and endpoint security."
+  model_answer:
+    - "Enable mixed mode with encrypted device security profiles and SRTP/TLS; issue and schedule renewal of LSCs via CAPF."
+    - "Provide remote access via MRA (Expressway-E/C, _collab-edge SRV) and use SIP OAuth so remote phones register securely without certificate enrolment pain."
+    - "Re-establish SBD trust after the rebuild using ITLRecovery/TVS so phones accept the new signer; document the procedure."
+    - "Harden endpoints (802.1X with LSC, disabled web/PC port) and track all trust-anchor expiries to avoid silent outages."
+questions:
+  - id: Q1
+    type: multi_select
+    stem: "Remote-worker phones cannot register and the customer refuses VPN. What registration design applies and what DNS record is pivotal?"
+    options:
+      - text: "Mobile and Remote Access via Expressway-E / C"
+        correct: true
+      - text: "The external _collab-edge SRV bootstraps service discovery"
+        correct: true
+      - text: "MRA needs no VPN"
+        correct: true
+      - text: "Open SCCP/SIP ports straight to UCM through the firewall"
+        correct: false
+  - id: Q2
+    type: multi_select
+    stem: "After a publisher rebuild, phones display 'No trust list installed' and reject their config. Which SBD components are involved and how is trust restored?"
+    options:
+      - text: "ITL (and CTL in mixed mode), validated by TVS"
+        correct: true
+      - text: "Restore trust with ITLRecovery"
+        correct: true
+      - text: "The ITL signer changed on the rebuild"
+        correct: true
+      - text: "Factory-reset every phone manually"
+        correct: false
+  - id: Q3
+    type: multi_select
+    stem: "The design must secure MRA-registered phones but the team wants to avoid CAPF certificate enrolment over the edge. What authenticates the endpoints instead?"
+    options:
+      - text: "SIP OAuth — token-based secure registration"
+        correct: true
+      - text: "No LSC / CAPF enrolment required"
+        correct: true
+      - text: "Well-suited to MRA where edge enrolment is awkward"
+        correct: true
+      - text: "Insist on an LSC via CAPF for every phone"
+        correct: false
+  - id: Q4
+    type: multi_select
+    stem: "A compliance mandate requires both signalling and media to phones to be encrypted. What cluster mode and per-device settings are mandatory?"
+    options:
+      - text: "Enable mixed mode (establish the CTL)"
+        correct: true
+      - text: "Assign an Encrypted device security profile with an LSC"
+        correct: true
+      - text: "Result: TLS signalling + SRTP media to the phone"
+        correct: true
+      - text: "Enable an encrypted profile while the cluster stays non-secure"
+        correct: false
+sources:
+  - "Design Module Training Guide, Module D13 (Cisco Learning — CCIE Collaboration)"
+  # Anchor every answer to the current Cisco doc — the exam source of truth.

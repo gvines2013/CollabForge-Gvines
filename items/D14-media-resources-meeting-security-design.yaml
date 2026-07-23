@@ -1,0 +1,128 @@
+id: D14
+domain: "Domain 6 — Media Resources & Meetings"
+title: "Media Resources & Meeting Security Design"
+item_types:
+  scenario_qa: 4
+  matrix: []
+  drag_and_drop: []
+objectives:
+  - "Place transcoders, MTPs, MoH and conference bridges where they are actually needed."
+  - "Choose IOS-XE ad-hoc conferencing vs Cisco Meeting Server by scale and feature."
+  - "Design secure meetings: roles, PMR security and end-to-end encryption plus identity."
+  - "Avoid unplanned media-resource insertion that degrades a design."
+topics:
+  - n: 1
+    title: "Media resources: transcoding, MTP, MoH, annunciator"
+    concept: "Media resources are DSP/software services UCM invokes via Media Resource Groups (MRG) and Lists (MRGL). Transcoders convert between codecs; MTPs bridge capabilities (DTMF, early offer); MoH streams hold audio; the annunciator plays tones/announcements."
+    bullets:
+      - "MRGL on device pool / device controls which resources a call can use and enforces locality."
+      - "Transcoder needed only when no common codec exists; MTP only to bridge a capability gap."
+      - "MoH source (multicast vs unicast) and codec affect WAN bandwidth — design per site."
+    worked_example: "WAN saturates during hold because unicast G.711 MoH streamed from HQ. Multicast MoH from a branch source (or G.729 MoH) cuts the WAN load dramatically."
+    exam_angle: "MoH bandwidth and resource locality are controlled by MRGL design, not by the codec alone."
+  - n: 2
+    title: "Ad-hoc & meet-me conferencing on IOS-XE"
+    concept: "Small ad-hoc conferences can use IOS-XE DSP-based conference bridges registered to UCM. They are simple and local but limited in size and features compared with a dedicated conferencing platform."
+    bullets:
+      - "IOS-XE conference bridges suit branch ad-hoc/meet-me with modest party counts."
+      - "DSP sizing (PVDM) bounds simultaneous conferences and transcoding together."
+      - "Beyond small scale or for rich meetings, move to Cisco Meeting Server."
+    worked_example: "Branch ad-hoc conferences fail at peak. PVDM DSP was shared between transcoding and conferencing and ran out; re-sizing DSP farms (or offloading to CMS) resolves contention."
+    exam_angle: "Conference-resource exhaustion items hinge on shared DSP (PVDM) sizing."
+  - n: 3
+    title: "Cisco Meeting Server for scalable meetings"
+    concept: "CMS provides scalable, interoperable conferencing (spaces, SIP/Lync interop, recording, large meetings) and integrates with UCM and Webex. It scales via clustering/load balancing and supports rich layouts and guest access."
+    bullets:
+      - "CMS spaces + call bridge groups scale conferencing beyond IOS-XE limits."
+      - "Standards-based SIP interop bridges third-party and Microsoft endpoints."
+      - "iX/ActiveControl carries roster/layout control with UCM endpoints."
+    worked_example: "An org needs 200-party interoperable meetings with recording. CMS call bridge group provides the scale and SIP interop that IOS-XE bridges cannot, integrated with UCM dial plan."
+    exam_angle: "Scale + interop + recording requirements select CMS over IOS-XE conferencing."
+  - n: 4
+    title: "Webex meetings: scheduling, features, media path"
+    concept: "Webex meetings are scheduled via the app/Control Hub and can keep media on-prem with Video Mesh when participants are internal, overflowing to the cloud when capacity or external participants require it."
+    bullets:
+      - "Video Mesh keeps internal media local (bandwidth savings) and never blocks — overflow to cloud."
+      - "Scheduling, recording and features are governed in Control Hub by license/role."
+      - "Quality troubleshooting uses Control Hub analytics (the media metrics behind RTCP)."
+    worked_example: "Internal all-hands hairpins media to the cloud and wastes WAN. Sizing Video Mesh cascade capacity keeps internal participants on-prem with cloud overflow as a safety valve."
+    exam_angle: "Video Mesh capacity vs cloud overflow is the on-prem-media design lever for Webex meetings."
+  - n: 5
+    title: "Meeting security: roles, PMR and E2EE + identity"
+    concept: "Secure meetings combine role design (host/cohost/presenter/attendee), Personal Meeting Room hardening (lobby, unlock policy), and end-to-end encryption plus verified identity so only intended participants decrypt media."
+    bullets:
+      - "PMR risk: a static personal room can be reused — enforce lobby/registration and auto-lock."
+      - "E2EE plus identity ensures the cloud cannot read media and participants are verified, at the cost of some interop features."
+      - "Participant roles bound who can share, record, admit and mute."
+    worked_example: "Sensitive board meetings need provable confidentiality. Use E2EE with identity verification and a locked PMR with explicit admission, accepting the feature trade-offs E2EE imposes."
+    exam_angle: "When the ask is 'cloud must not be able to read media + verified participants', that is E2EE plus identity, not just TLS."
+decide_fast:
+  - requirement: "Hold music saturates WAN"
+    answer: "Multicast / low-bitrate MoH via MRGL"
+  - requirement: "No common codec on a call"
+    answer: "Transcoder (only then)"
+  - requirement: "200-party interoperable meeting"
+    answer: "Cisco Meeting Server"
+  - requirement: "Keep internal meeting media on-prem"
+    answer: "Video Mesh + cloud overflow"
+  - requirement: "Cloud must not read media"
+    answer: "E2EE plus identity, locked PMR"
+scenario:
+  customer_ask: "An enterprise sees WAN saturation on hold and during all-hands, branch ad-hoc conferences failing at peak, and a board demanding provably confidential meetings. Design the media-resource and meeting-security architecture."
+  model_answer:
+    - "Use MRGL to localize resources, multicast/low-bitrate MoH to cut WAN, and reserve transcoders/MTPs only for genuine capability/codec gaps."
+    - "Right-size branch DSP (PVDM) or offload conferencing to Cisco Meeting Server for scale and interop."
+    - "Size Video Mesh cascade capacity so internal all-hands media stays on-prem with cloud overflow."
+    - "For the board, deploy E2EE plus identity with a locked PMR and explicit roles, documenting the interop trade-offs."
+questions:
+  - id: Q1
+    type: multi_select
+    stem: "Hold music is saturating the WAN between HQ and branches. Which design levers fix it and which UCM construct enforces them?"
+    options:
+      - text: "Switch MoH to multicast / a low-bitrate codec"
+        correct: true
+      - text: "Source MoH locally at each site"
+        correct: true
+      - text: "MRGL enforces resource locality"
+        correct: true
+      - text: "Simply increase the WAN bandwidth"
+        correct: false
+  - id: Q2
+    type: multi_select
+    stem: "A customer needs 200-party meetings with third-party interop and recording. Why not IOS-XE ad-hoc conferencing, and what do you choose?"
+    options:
+      - text: "Cisco Meeting Server (call bridge groups) for scale + interop + recording"
+        correct: true
+      - text: "CMS provides standards-based SIP interop and recording"
+        correct: true
+      - text: "IOS-XE conference bridges scale to 200 interoperable parties"
+        correct: false
+      - text: "Stack more PVDM DSP into the routers"
+        correct: false
+  - id: Q3
+    type: multi_select
+    stem: "A board requires meetings the cloud provider cannot decrypt, with verified participants. Which Webex capability meets this and what is the trade-off?"
+    options:
+      - text: "End-to-end encryption plus identity"
+        correct: true
+      - text: "Media keys are held only by the participants, not the cloud"
+        correct: true
+      - text: "Trade-off: some interop / features are unavailable"
+        correct: true
+      - text: "Standard TLS is sufficient because 'meetings are encrypted'"
+        correct: false
+  - id: Q4
+    type: multi_select
+    stem: "Internal all-hands media is hairpinning through the Webex cloud and wasting WAN. What keeps it on-prem and why does it never block calls?"
+    options:
+      - text: "Cisco Video Mesh keeps internal media on-prem"
+        correct: true
+      - text: "Overflow to the cloud when nodes are full — it never blocks"
+        correct: true
+      - text: "Capacity planning trades WAN savings against node sizing"
+        correct: true
+      - text: "Disable cloud fallback to force all media on-prem"
+        correct: false
+sources:
+  - "Design Module Training Guide, Module D14 (Cisco Learning — CCIE Collaboration)"
+  # Anchor every answer to the current Cisco doc — the exam source of truth.

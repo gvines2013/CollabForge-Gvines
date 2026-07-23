@@ -1,0 +1,128 @@
+id: D9
+domain: "Domain 1 — Protocols & APIs"
+title: "SIP Signaling & Session Identity Design"
+item_types:
+  scenario_qa: 4
+  matrix: []
+  drag_and_drop: []
+objectives:
+  - "Read a SIP ladder and name every request, response class and the dialog it builds."
+  - "Predict caller-ID and privacy outcomes from identity, Diversion and P-A-I headers."
+  - "Use Route / Record-Route to explain why a proxy stays in the path — or drops out."
+  - "Correlate a call across UCM, CUBE and Webex using Call-ID, Session-ID and Cisco-GUID."
+topics:
+  - n: 1
+    title: "SIP transactions, dialogs and the request/response model"
+    concept: "SIP is a text request/response protocol. A method (INVITE, ACK, BYE, CANCEL, REGISTER, SUBSCRIBE, NOTIFY, REFER, UPDATE, INFO) starts a transaction; responses are grouped 1xx provisional, 2xx success, 3xx redirect, 4xx client error, 5xx server error, 6xx global failure."
+    bullets:
+      - "A dialog is identified by Call-ID + local tag + remote tag; INVITE/200/ACK establishes it, BYE tears it down."
+      - "CANCEL only stops a still-ringing INVITE; after a 200 OK you must use BYE."
+      - "100rel/PRACK makes a 18x reliable so early media and 183 Session Progress are acknowledged."
+    worked_example: "A trace shows INVITE → 100 → 180 → 200 → ACK → … → BYE → 200. You can immediately tell the dialog matched, media flowed, and the caller hung up. A 488 instead of 200 means 'not acceptable here' — almost always an SDP/codec or SRTP mismatch, not a routing problem."
+    exam_angle: "Items hide the fault in a single response code — map the 4xx/5xx to the layer (488 = media, 403 = policy, 404 = dial-plan) before troubleshooting."
+  - n: 2
+    title: "Identity headers: From, P-Asserted-Identity and Privacy"
+    concept: "Calling-party identity travels in several headers. From is user-supplied and untrusted; P-Asserted-Identity (PAI) carries the network-verified identity inside a trusted domain; Privacy: id requests that PAI be withheld from the far end."
+    bullets:
+      - "UCM sends PAI (and optionally RPID) on trunks; the SIP profile / trunk config decides which header the provider trusts."
+      - "Privacy header + 'Calling Line ID Presentation = Restricted' drive CLIR; the trunk must honour it or you leak identity."
+      - "Number vs name vs URI are independent fields — a design states each one's source and transformation."
+    worked_example: "An ITSP shows the corporate main number on every outbound call. Root cause: UCM presents the DN in PAI but the carrier bills on From, which an external-phone-number-mask left blank. Fix in the SIP profile / transformation, not on the phone."
+    exam_angle: "Watch for a requirement that says 'present the main number but keep the real DID in the network' — that is PAI vs From by design."
+  - n: 3
+    title: "Route, Record-Route and Via — who stays in the path"
+    concept: "Via traces the request hop-by-hop for responses. Record-Route lets a proxy insert itself so every in-dialog message (BYE, re-INVITE) keeps traversing it; Route headers then force the pre-built path."
+    bullets:
+      - "A proxy that wants to stay for the whole call adds Record-Route; one that only needs the INVITE does not."
+      - "Loose routing (;lr) is the modern default — the Request-URI stays the target, Route headers steer."
+      - "Max-Forwards decrements per hop; loops surface as 483 Too Many Hops."
+    worked_example: "Mid-call hold fails only on transferred calls. The transfer moved media but a stateful SBC dropped out because it never Record-Routed, so the re-INVITE bypassed it and hit a firewall pinhole that no longer existed."
+    exam_angle: "If in-dialog requests fail but call setup works, suspect a missing Record-Route on a box you assumed was anchored."
+  - n: 4
+    title: "Diversion vs History-Info — carrying the redirect reason"
+    concept: "When a call is forwarded, the original and intermediate targets must be conveyed so voicemail, billing and loop-prevention work. Diversion (legacy) and History-Info (RFC 4244) both carry this."
+    bullets:
+      - "Voicemail systems read the diverting number to pick the right mailbox — drop it and callers land in the wrong greeting."
+      - "UCM can be set to send Diversion, History-Info, or both per SIP trunk / profile; the provider dictates which."
+      - "Redirecting reason codes (user-busy, no-answer, unconditional) drive CFB vs CFNA mailbox behaviour."
+    worked_example: "Forward-to-Unity calls reach a generic greeting. Unity needs the original called number; the trunk was sending History-Info but Unity was configured to read Diversion. Align the header, mailbox routing works."
+    exam_angle: "A 'wrong mailbox' or 'no redirected number' symptom is a Diversion / History-Info selection question, not a Unity bug."
+  - n: 5
+    title: "Correlating a call: Call-ID, Session-ID and Cisco-GUID"
+    concept: "Call-ID is unique per SIP dialog, so each leg of a multi-hop call has a different Call-ID. Session-ID (RFC 7989) is an end-to-end identifier that survives B2BUA hops; Cisco-GUID ties IOS-XE/CUBE legs together."
+    bullets:
+      - "To follow a call UCM → CUBE → ITSP you correlate on Session-ID, not Call-ID, because CUBE re-originates the dialog."
+      - "Session-ID appears as local/remote UUID pair and is logged by UCM, CUBE and Webex for cross-platform tracing."
+      - "Cisco-GUID / peer-callid in 'show call active voice' stitches inbound and outbound dial-peer legs on the gateway."
+    worked_example: "A one-way-audio ticket spans three systems. Filtering each tool by the shared Session-ID UUID isolates the exact leg where SDP showed the wrong media address — minutes instead of hours."
+    exam_angle: "Multi-system trace items expect Session-ID as the correlation key; choosing Call-ID is the classic distractor."
+decide_fast:
+  - requirement: "Network-verified caller ID on a trunk"
+    answer: "P-Asserted-Identity (+ Privacy)"
+  - requirement: "Hide caller number from far end"
+    answer: "Privacy: id + CLIR restricted"
+  - requirement: "Keep SBC in path for whole call"
+    answer: "Record-Route on the SBC"
+  - requirement: "Voicemail needs original called number"
+    answer: "Diversion or History-Info (match provider)"
+  - requirement: "Trace a call across UCM/CUBE/Webex"
+    answer: "Correlate on Session-ID (RFC 7989)"
+scenario:
+  customer_ask: "Outbound calls via a new SIP provider show the wrong caller ID, CLIR-restricted calls still display the number, and forwarded-to-voicemail calls reach the wrong greeting. Design the header strategy on the UCM trunk and CUBE."
+  model_answer:
+    - "Present the corporate identity in P-Asserted-Identity and set the billing/From number with an external phone-number mask; document which header the carrier trusts."
+    - "Honour Privacy: id end-to-end — verify the SIP profile does not strip it and the carrier suppresses PAI when restricted."
+    - "Send the redirecting number in the header the provider and Unity both read (Diversion vs History-Info) — align all three."
+    - "State the loop-prevention and correlation plan: Max-Forwards, and Session-ID logging on UCM and CUBE for cross-platform tracing."
+questions:
+  - id: Q1
+    type: multi_select
+    stem: "A trunk must show the network-verified caller identity but let users restrict presentation. Which two headers implement this, and what does each do?"
+    options:
+      - text: "P-Asserted-Identity carries the network-verified identity"
+        correct: true
+      - text: "Privacy: id withholds PAI from the untrusted far end"
+        correct: true
+      - text: "Use the From header as the trust anchor"
+        correct: false
+      - text: "Remote-Party-ID removes the need for PAI"
+        correct: false
+  - id: Q2
+    type: multi_select
+    stem: "Call setup works but mid-call re-INVITEs (hold/transfer) fail at a stateful SBC. What SIP mechanism was almost certainly missing?"
+    options:
+      - text: "Record-Route on the SBC keeps it in every in-dialog message"
+        correct: true
+      - text: "Without Record-Route, in-dialog requests route around the SBC"
+        correct: true
+      - text: "Via alone keeps the SBC in the dialog"
+        correct: false
+      - text: "The codec must be renegotiated to fix hold/transfer"
+        correct: false
+  - id: Q3
+    type: multi_select
+    stem: "You must follow a single call across UCM, CUBE and Webex. Why is Call-ID insufficient, and what do you correlate on instead?"
+    options:
+      - text: "Session-ID (RFC 7989) correlates across B2BUA hops"
+        correct: true
+      - text: "Call-ID is unique per dialog, so it changes at each B2BUA"
+        correct: true
+      - text: "Cisco-GUID stitches the gateway legs together"
+        correct: true
+      - text: "Filtering every tool by one Call-ID follows the whole call"
+        correct: false
+  - id: Q4
+    type: multi_select
+    stem: "Forwarded-to-voicemail calls reach a generic greeting instead of the original called user's mailbox. Which header family is misconfigured and why does it matter?"
+    options:
+      - text: "The redirecting-number header (Diversion or History-Info)"
+        correct: true
+      - text: "Unity selects the mailbox from the original called number"
+        correct: true
+      - text: "Align the header Unity reads with what the trunk sends"
+        correct: true
+      - text: "It is a Unity Connection database fault"
+        correct: false
+sources:
+  - "Design Module Training Guide, Module D9 (Cisco Learning — CCIE Collaboration)"
+  # Anchor every answer to the current Cisco doc — the exam source of truth.

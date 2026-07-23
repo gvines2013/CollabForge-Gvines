@@ -1,0 +1,128 @@
+id: D12
+domain: "Domain 3 — Call Control & Dial Plan"
+title: "CUBE Dial-Peers, Normalization & Survivability Design"
+item_types:
+  scenario_qa: 4
+  matrix: []
+  drag_and_drop: []
+objectives:
+  - "Predict inbound and outbound dial-peer matching order on IOS-XE CUBE."
+  - "Shape digits and headers with voice translation rules and SIP/SDP normalization (Lua)."
+  - "Use dial-peer groups, server groups and E.164 pattern maps for scalable routing."
+  - "Design SIP-SRST and the Webex Calling Survivability Gateway for branch survivability."
+topics:
+  - n: 1
+    title: "Inbound vs outbound dial-peer matching"
+    concept: "CUBE selects one inbound dial-peer (to apply ingress policy) and then an outbound dial-peer (to route). Inbound matching uses, in order, incoming uri / called / calling / port; outbound uses destination-pattern or dest server/dpg. Missing the order causes the wrong policy to apply."
+    bullets:
+      - "Prefer 'incoming uri' / 'incoming called-number' for deterministic inbound matching over relying on port."
+      - "Most-specific destination-pattern wins outbound; use dial-peer groups to escape longest-match guesswork."
+      - "dial-peer 0 (default) means you matched nothing you intended — always define explicit peers."
+    worked_example: "Calls hit the wrong codec/SIP profile because the implicit inbound peer matched. Adding 'incoming called-number' on the intended peer makes ingress policy deterministic."
+    exam_angle: "'Wrong profile/codec applied inbound' is an inbound dial-peer matching order question."
+  - n: 2
+    title: "Voice translation rules and profiles"
+    concept: "Translation rules use regex (/match/replace/) to re-write calling/called numbers; a translation-profile bundles rules and is applied to a dial-peer or voice-port for incoming or outgoing direction."
+    bullets:
+      - "Order of rules matters — first match wins within a rule set."
+      - "Apply profiles directionally (translate calling vs called, incoming vs outgoing) and on the correct peer."
+      - "Use them for +E.164 normalization, DID expansion and CLID manipulation at the edge."
+    worked_example: "An ITSP delivers 10-digit DIDs but UCM expects +E.164. An incoming translation profile prepends +1, so UCM routing sees a clean globalized number."
+    exam_angle: "Digit-manipulation items specify direction and peer — applying the rule on the wrong side is the trap."
+  - n: 3
+    title: "SIP/SDP normalization and transparency (Lua)"
+    concept: "SIP profiles (and Lua normalization scripts) add, remove or rewrite SIP headers and SDP to fix interop quirks; transparency passes unknown headers through unchanged. They are the surgical tool when a carrier deviates from standards."
+    bullets:
+      - "IOS-XE SIP profiles edit request/response headers per peer or globally."
+      - "Lua scripts handle complex conditional rewrites beyond static SIP profiles."
+      - "Prefer the least-invasive fix; over-normalizing hides the real interop issue."
+    worked_example: "A carrier rejects calls because of an unexpected Diversion header format. A SIP profile rewrites that header on the outbound peer, and the calls complete without touching UCM."
+    exam_angle: "When only one carrier breaks and standards are met, the answer is a SIP profile / Lua normalization at CUBE."
+  - n: 4
+    title: "Dial-peer groups, server groups and E.164 pattern maps"
+    concept: "Server groups list multiple target IPs for redundancy on one dial-peer; E.164 pattern maps attach many destination patterns to one dial-peer; dial-peer groups (DPG) bind a chosen outbound group to an inbound peer, removing longest-match ambiguity."
+    bullets:
+      - "Destination server-group = built-in failover/round-robin to multiple UCM subscribers."
+      - "E.164 pattern map = one peer, many patterns — cleaner than dozens of peers."
+      - "DPG ties 'calls that came in here go out via this group', deterministic and scalable."
+    worked_example: "Trunk failover to a second UCM subscriber was manual. A destination server group with two IPs gives automatic re-route on SIP options out-of-service, no extra dial-peers."
+    exam_angle: "Scaling/failover items favour server groups, pattern maps and DPGs over many discrete dial-peers."
+  - n: 5
+    title: "Branch survivability: SIP-SRST & Webex Calling Survivability GW"
+    concept: "When the WAN/cloud is down, branch phones must keep dialing. SIP-SRST on an IOS-XE gateway registers local SIP phones and provides basic call routing during UCM outage; the Webex Calling Survivability Gateway does the same for Webex Calling registered devices."
+    bullets:
+      - "SRST scope is deliberately basic: local + PSTN calling, reduced features, automatic fallback/recovery."
+      - "Size SRST for the branch device count and define the PSTN breakout it uses while isolated."
+      - "Webex Calling Survivability Gateway (IOS-XE) keeps WxC phones calling locally during a cloud/Internet outage."
+    worked_example: "A branch loses its WAN; phones re-home to SRST and can still call locally and to PSTN. On WAN recovery they re-register to UCM automatically — design the SRST reference and CSS so day-to-day routing is unchanged."
+    exam_angle: "Survivability items test scope and fallback: SRST is intentionally feature-reduced, not a UCM replacement."
+decide_fast:
+  - requirement: "Deterministic inbound policy"
+    answer: "Match 'incoming called/uri', not port"
+  - requirement: "Normalize ITSP DIDs to +E.164"
+    answer: "Incoming voice translation profile"
+  - requirement: "One carrier breaks a header"
+    answer: "SIP profile / Lua normalization"
+  - requirement: "Trunk failover to 2nd UCM sub"
+    answer: "Destination server group"
+  - requirement: "Branch keeps calling in WAN outage"
+    answer: "SIP-SRST / WxC Survivability GW"
+scenario:
+  customer_ask: "A new ITSP delivers 10-digit DIDs, rejects calls over one non-standard header, and the branch must keep dialing during WAN outages. The current config relies on implicit dial-peers and manual subscriber failover. Redesign the CUBE edge."
+  model_answer:
+    - "Make inbound matching explicit ('incoming called-number'/uri) so the right SIP profile and codec apply; route outbound with a dial-peer group."
+    - "Normalize DIDs to +E.164 with an incoming translation profile and fix the carrier header with a targeted SIP profile — least-invasive."
+    - "Add a destination server group across UCM subscribers for automatic failover via SIP OPTIONS keepalives."
+    - "Deploy SIP-SRST (or WxC Survivability Gateway) sized for the branch, with local + PSTN routing and automatic recovery."
+questions:
+  - id: Q1
+    type: multi_select
+    stem: "Inbound calls on CUBE get the wrong SIP profile and codec. Explain the matching behaviour and the fix."
+    options:
+      - text: "Add 'incoming called-number' / uri for deterministic ingress matching"
+        correct: true
+      - text: "Inbound order: incoming uri → called → calling → port"
+        correct: true
+      - text: "With nothing explicit, the implicit default peer applies its policy"
+        correct: true
+      - text: "Edit the outbound dial-peer to fix the ingress profile"
+        correct: false
+  - id: Q2
+    type: multi_select
+    stem: "Only one carrier rejects calls, and your SIP signalling is standards-compliant. What is the right tool and the design caution?"
+    options:
+      - text: "A SIP profile (or Lua) on the carrier-facing dial-peer"
+        correct: true
+      - text: "Make the smallest change that fixes interop"
+        correct: true
+      - text: "Normalization confines the carrier quirk to CUBE"
+        correct: true
+      - text: "Change UCM-wide settings to satisfy one carrier"
+        correct: false
+  - id: Q3
+    type: multi_select
+    stem: "You need automatic trunk failover across two UCM subscribers from a single dial-peer. Which CUBE construct provides it and how is health detected?"
+    options:
+      - text: "A destination server group listing both subscriber IPs"
+        correct: true
+      - text: "SIP OPTIONS keepalive marks a down target out-of-service"
+        correct: true
+      - text: "Server groups avoid proliferating dial-peers"
+        correct: true
+      - text: "A second dial-peer with higher preference but no liveness check"
+        correct: false
+  - id: Q4
+    type: multi_select
+    stem: "During a WAN outage branch phones must still place local and PSTN calls. What provides this and what is the explicit scope limitation?"
+    options:
+      - text: "SIP-SRST (or the WxC Survivability Gateway) registers local phones"
+        correct: true
+      - text: "Scope is intentionally basic — local + PSTN, reduced features"
+        correct: true
+      - text: "Automatic fallback and recovery on WAN restore"
+        correct: true
+      - text: "SRST provides full UCM feature parity during the outage"
+        correct: false
+sources:
+  - "Design Module Training Guide, Module D12 (Cisco Learning — CCIE Collaboration)"
+  # Anchor every answer to the current Cisco doc — the exam source of truth.

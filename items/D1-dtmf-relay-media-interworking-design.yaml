@@ -1,0 +1,134 @@
+id: D1
+domain: "Domain 1 — Protocols & APIs"
+title: "DTMF Relay & Media Interworking Design"
+item_types:
+  scenario_qa: 4
+  matrix:
+    - "MX1"
+  drag_and_drop: []
+objectives:
+  - "Explain how each DTMF method actually carries a digit, end to end"
+  - "Predict negotiation outcomes on CUBE calls — before looking at a debug"
+  - "Design MTP-less call paths and defend them with the interworking rules"
+topics:
+  - n: 1
+    title: "Why DTMF needs 'relay' at all"
+    concept: "A key press is just two audio sine waves (e.g., digit 5 = 770 Hz + 1336 Hz). With G.711 those tones survive in the voice stream — 'in-band' works. But low-bitrate codecs like G.729 are built to compress human speech; they distort pure tones, so the far-end IVR hears garbage. The fix: take the digit OUT of the audio and send it as data. That is DTMF relay."
+    bullets:
+      - "In-band = tones inside RTP audio. Reliable only with G.711/G.722."
+      - "Relay = digit sent as an event, either in the media plane or the signaling plane."
+      - "Every interop failure is a mismatch between what each leg can send/accept."
+      - "Design rule: never let a G.729/OPUS path depend on in-band tones."
+    worked_example: "A bank's IVR works fine on-net (G.711) but fails for branch callers whose WAN calls use G.729. Diagnosis: digits are in-band; G.729 mangles them. Design fix: mandate RFC 2833 relay end-to-end — the codec then no longer matters, because digits travel as named events, not audio."
+    exam_angle: "Scenario items hide the codec in a diagram footnote. G.729 + 'IVR ignores digits' = in-band dependency."
+  - n: 2
+    title: "RFC 2833 / 4733 (rtp-nte): the media-plane method"
+    concept: "The digit is sent as a special RTP packet type called a named telephony event (NTE), inside the same RTP stream as the audio but with its own payload type (PT). The PT number is negotiated in SDP: the offer carries a line like 'a=rtpmap:101 telephone-event/8000'. Because the event is data (digit 5, duration, volume), it is codec-independent and survives any voice codec."
+    bullets:
+      - "Default PT is 101, but ANY dynamic PT (96–127) is legal — never assume 101."
+      - "Negotiated per leg in the SDP offer/answer; each leg can use a different PT."
+      - "The standard answer for SIP trunking and mandatory toward Webex Calling LGW."
+      - "Redundant transmissions make it robust to packet loss."
+    worked_example: "Offer: m=audio 16384 RTP/AVP 0 101 + a=rtpmap:101 telephone-event/8000. Answer from ITSP: a=rtpmap:96 telephone-event/8000. Result: leg A sends digit events on PT 101, leg B expects PT 96 — works only because CUBE rewrites the PT between legs (payload interworking)."
+    exam_angle: "Trace-reading items show two SDPs with different telephone-event PTs and ask why the call still works."
+  - n: 3
+    title: "Out-of-band: KPML, SIP INFO, unsolicited NOTIFY"
+    concept: "Out-of-band methods move digits into SIP signaling, bypassing media entirely. KPML (RFC 4730) is what Cisco endpoints registered to UCM use: the interested party SUBSCRIBEs to key presses and receives a NOTIFY per digit. SIP INFO sends the digit in an INFO message body. Unsolicited NOTIFY is a legacy Cisco IOS method that sends NOTIFY without subscription."
+    bullets:
+      - "KPML = subscription model, per-dialog, precise; Cisco phone default toward UCM."
+      - "SIP INFO = no subscription; mostly demanded by specific providers/apps."
+      - "Unsolicited NOTIFY = legacy IOS gateway interop; avoid in new designs."
+      - "Signaling-plane digits are immune to codec and media-path problems."
+    worked_example: "An 8865 on UCM dials an ITSP IVR. The phone produces KPML digits toward UCM; the ITSP only accepts RFC 2833. Nothing is wrong with either side — the DESIGN must place the interworking point (CUBE) between them and state it explicitly: kpml on the UCM leg, rtp-nte on the provider leg."
+    exam_angle: "Know which side of the call naturally produces which method: UCM endpoints → KPML; ITSPs → 2833; legacy IOS → NOTIFY."
+  - n: 4
+    title: "CUBE interworking rules — and the MTP-less goal"
+    concept: "CUBE natively interworks any RELAY method with any other relay method (rtp-nte ↔ kpml ↔ notify ↔ info) because both are structured events — no DSP needed. The only expensive case is in-band tone → relay: someone must LISTEN to the audio to detect tones, which requires a DSP/MTP. UCM behaves similarly: if trunk legs can't agree, UCM inserts an MTP — that's a design defect, not a fix."
+    bullets:
+      - "Relay ↔ relay: free, signaling/media event translation on CUBE."
+      - "In-band ↔ relay: DSP-backed MTP required — design it out where possible."
+      - "Configure preference: dtmf-relay rtp-nte sip-kpml on the dial-peer; richest common wins."
+      - "PA/SRND goal: MTP-less operation; MTP insertion adds delay, failure points, capacity load."
+    worked_example: "Dial-peer config: 'dtmf-relay rtp-nte sip-kpml'. UCM leg negotiates KPML, ITSP leg negotiates rtp-nte; CUBE converts each NOTIFYed digit into an RTP NTE packet. Zero DSPs. If instead the ITSP were in-band-only, the design answer changes: insert a DSP MTP at CUBE AND flag it as a contract exception — push the provider to support 2833."
+    exam_angle: "Classic question: 'which design avoids MTP insertion?' Answer = both legs on relay methods + CUBE interworking."
+  - n: 5
+    title: "Payload-type interworking & codec policy"
+    concept: "Two independent negotiations happen per leg: the voice codec and the telephone-event PT. Designs must keep both transcoding-free. Codec policy: constrain offers with codec preference lists so both legs land on the same codec; payload policy: allow asymmetric NTE PTs and let CUBE rewrite them. If the codecs differ per leg, you need a transcoder (DSP); if only the event PT differs, you don't."
+    bullets:
+      - "Asymmetric telephone-event PT (101 vs 96) = handled natively by CUBE."
+      - "Different voice codecs per leg = transcoding DSPs — a sizing and cost line-item."
+      - "Codec preference lists on CUBE + UCM regions keep paths transcoder-free."
+      - "Document expected codec + DTMF outcome for every path in the design."
+    worked_example: "Design table for path UCM↔CUBE↔ITSP: codec G.711a both legs (region + preference list enforce it), DTMF rtp-nte PT 101 ↔ PT 96 (asymmetric OK). Same table for the Webex LGW path: codec OPUS/G.711 per cloud policy, DTMF rtp-nte mandatory. This per-path table IS the deliverable a Design-module item expects you to recognize as correct."
+    exam_angle: "Differentiate: PT mismatch (free fix) vs codec mismatch (DSP cost). Items bait you into 'add a transcoder' for a PT issue."
+decide_fast:
+  - requirement: "UCM↔CUBE↔ITSP trunk"
+    answer: "rtp-nte both legs"
+  - requirement: "KPML phones ↔ 2833-only provider"
+    answer: "CUBE interworks — no DSP"
+  - requirement: "Provider supports in-band only"
+    answer: "DSP MTP + contract exception"
+  - requirement: "IVR/CVP consumes digits"
+    answer: "Out-of-band toward the app"
+  - requirement: "Webex Calling Local Gateway"
+    answer: "rtp-nte (mandatory)"
+scenario:
+  customer_ask: "Calls from older conference phones intermittently fail IVR navigation via a new SIP provider. Traces show the provider answers telephone-event PT 96; UCM endpoints use KPML; conference phones are G.729-capable only."
+  model_answer:
+    - "Keep kpml + rtp-nte offered on the UCM leg, rtp-nte on the provider leg — CUBE interworks, no MTP."
+    - "Enable asymmetric payload interworking so PT 101 ↔ PT 96 is rewritten per leg."
+    - "Root cause for the old phones: they fall back to in-band on G.729 — exclude in-band paths or force relay support."
+    - "State the constraint in the design: no call path may depend on in-band DTMF over compressed codecs."
+questions:
+  - id: Q1
+    type: multi_select
+    stem: "A provider requires SIP INFO for DTMF while UCM endpoints use KPML. Which single device interworks them, and is a DSP required?"
+    options:
+      - text: "CUBE interworks SIP INFO ↔ KPML in software — no DSP required"
+        correct: true
+      - text: "An MTP or transcoder is required to bridge SIP INFO and KPML"
+        correct: false
+      - text: "A DSP is mandatory because the two methods differ"
+        correct: false
+      - text: "UCM converts the methods natively; CUBE is not involved"
+        correct: false
+  - id: Q2
+    type: multi_select
+    stem: "Leg A negotiates telephone-event PT 101, leg B PT 96. What feature makes this work, and what breaks without it?"
+    options:
+      - text: "CUBE's asymmetric telephone-event payload-type interworking"
+        correct: true
+      - text: "Symptom without it: two-way audio is fine but key presses are ignored"
+        correct: true
+      - text: "Force both legs to renegotiate to PT 101"
+        correct: false
+      - text: "Insert an MTP to normalize the payload type"
+        correct: false
+  - id: Q3
+    type: multi_select
+    stem: "Which two conditions force an MTP into a DTMF design — and which Cisco document tells you to avoid exactly that?"
+    options:
+      - text: "A leg supports only in-band tones (tone detection needs a DSP)"
+        correct: true
+      - text: "Legs share no common/interworkable method, so UCM inserts an MTP"
+        correct: true
+      - text: "MTPs are harmless because they are software"
+        correct: false
+      - text: "Both legs already negotiate RFC 2833"
+        correct: false
+  - id: Q4
+    type: multi_select
+    stem: "Why does G.729 break in-band DTMF but not RFC 2833?"
+    options:
+      - text: "G.729 is a low-bitrate model-based codec that distorts dual-sine tones"
+        correct: true
+      - text: "RFC 2833 sends the digit as a named event, not audio (codec-independent)"
+        correct: true
+      - text: "G.711 also breaks in-band DTMF"
+        correct: false
+      - text: "RFC 2833 fails on G.729 exactly like in-band tones"
+        correct: false
+sources:
+  - "https://www.cisco.com/c/en/us/td/docs/ios-xml/ios/voice/cube/configuration/cube-book/dtmf-relay.html"
+  - "Design Module Training Guide, Module D1 (Cisco Learning — CCIE Collaboration)"
+  # Anchor every answer to the current Cisco doc — the exam source of truth.

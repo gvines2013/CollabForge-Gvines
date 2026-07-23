@@ -1,0 +1,134 @@
+id: D2
+domain: "Domain 1 — Protocols & APIs"
+title: "Collaboration APIs: AXL, UDS & SOAP Tooling"
+item_types:
+  scenario_qa: 4
+  matrix:
+    - "MX2"
+  drag_and_drop: []
+objectives:
+  - "Explain what each API family actually does on the wire"
+  - "Design bulk provisioning that survives AXL throttling and publisher-only writes"
+  - "Prototype and validate API workflows in SoapUI before committing the design"
+topics:
+  - n: 1
+    title: "AXL: how SOAP provisioning really works"
+    concept: "AXL is a SOAP web service on UCM (port 8443, /axl/). A client sends an XML envelope describing an operation — addPhone, updateLine, getUser — and UCM executes it directly against its configuration database. The contract is a versioned WSDL/XSD schema shipped per UCM release: AXLAPI.wsdl defines every operation, every field, every type."
+    bullets:
+      - "Transport: HTTPS POST of a SOAP envelope; auth = UCM app/end user with Standard AXL API Access role."
+      - "WRITES go to the PUBLISHER only — subscribers can serve reads."
+      - "Schema is versioned: request headers pin it (e.g., 12.5 vs 14.0 schema)."
+      - "Response returns the new object's pkid (database UUID) — your handle for updates."
+    worked_example: "addPhone envelope (abridged): <ns:addPhone><phone><name>SEP001122334455</name><product>Cisco 8865</product><devicePoolName>HQ-DP</devicePoolName><lines>…DN 3001…</lines></phone></ns:addPhone> → response <return>{pkid}</return>. One HR-feed row becomes one such call; 5,000 hires = 5,000 calls — which is why throttling design (next) matters."
+    exam_angle: "Two facts are repeatedly tested: writes are publisher-only, and the schema is per-release. Both are stated constraints in middleware design items."
+  - n: 2
+    title: "AXL throttling, batching & executeSQLQuery"
+    concept: "UCM defends itself: AXL writes are throttled (change notifications, DB write limits), and oversized responses are rejected. A bulk design that fires thousands of writes serially at 9 AM will be throttled or will degrade call processing. Correct design: batch off-hours, pace requests, implement back-off on throttle responses, and use executeSQLQuery (read-only SQL) for bulk reads instead of thousands of get* calls."
+    bullets:
+      - "Throttle behavior = HTTP 503/socket pushback; clients MUST implement retry with back-off."
+      - "Schedule bulk writes in maintenance windows; pace (e.g., 1–5 writes/sec sustained)."
+      - "executeSQLQuery: direct Informix reads (device, enduser, numplan tables) — fast bulk reads."
+      - "executeSQLUpdate exists but bypasses validation — design reviews should challenge it."
+    worked_example: "Requirement: nightly report of all registered phones + descriptions. Wrong design: 30,000 getPhone calls. Right design: ONE executeSQLQuery — 'select name, description from device where tkclass=1' — paged if large. For the HR onboarding feed: queue rows, write 2/sec from 22:00, exponential back-off on 503, resume token for restart."
+    exam_angle: "Items contrast a naive serial-write design with a batched/paced one and ask which constraint (throttle, publisher CPU, business hours) the bad design violates."
+  - n: 3
+    title: "UDS: the user-facing read API behind login"
+    concept: "User Data Service is a REST/XML API every UCM node serves (/cucm-uds/). It is how clients FIND their cluster and settings: the Webex App queries UDS to locate the user's home cluster (service discovery), read their devices, lines, and self-care settings. It deliberately exposes user-scope reads and limited self-service writes — it is not an admin provisioning interface."
+    bullets:
+      - "Reads work on ANY node — no publisher dependency; scales with the cluster."
+      - "Drives login: _collab-edge SRV → Expressway → UDS user lookup → home cluster."
+      - "ILS-linked clusters answer UDS queries for remote users (intercluster discovery)."
+      - "Self-service writes only (e.g., user's own speed dials) — by design."
+    worked_example: "GET https://ucm1:8443/cucm-uds/users?username=kashif → XML with the user's home cluster + servers. During MRA login, Expressway-C proxies exactly this query. Design use: a 3-cluster estate with ILS lets one UDS query find any user — which is why the design answer for 'soft clients must log in with only a username' is UDS + ILS, never AXL."
+    exam_angle: "'Which API does the Webex App use to find its home cluster?' — UDS via service discovery. AXL is the distractor."
+  - n: 4
+    title: "Serviceability XML (SXML): RisPort70 & PerfMon — prototyped in SoapUI"
+    concept: "The Serviceability APIs answer 'what is happening right now': RisPort70 returns real-time device registration state (which node, IP, status), PerfmonPort reads performance counters, and CDRonDemand fetches call records. Like AXL they are SOAP services with published WSDLs — which makes SoapUI the standard design-validation tool: import WSDL, set credentials, fire a request, inspect the XML before any code exists."
+    bullets:
+      - "RisPort70 selectCmDevice: registration status for up to 1,000 devices per query."
+      - "PerfmonPort: any RTMT counter (calls active, registered phones, CPU) over SOAP."
+      - "SoapUI workflow: import WSDL → auth (HTTPS+basic) → sample request → validate response."
+      - "Poll-interval discipline: dashboards must respect query limits (don't poll 30k devices/5s)."
+    worked_example: "Design validation for a registration dashboard: in SoapUI, import https://ucm:8443/realtimeservice2/services/RISService70?wsdl, run selectCmDevice with SearchItems=SEP*, confirm the response model (Registered/UnRegistered + node). Then size polling: 30,000 phones ÷ 1,000 per query = 30 queries per sweep; sweep every 60 s, not every 5 s."
+    exam_angle: "Match the tool to the phase: SoapUI = design-time validation of SOAP APIs; the DevNet SXML tutorial is the cited workflow."
+  - n: 5
+    title: "Webex REST API — and choosing the right API per requirement"
+    concept: "The Webex REST API is the cloud counterpart: OAuth bearer tokens, JSON, resources like /people, /devices, /telephony/config. Integrations (user-context) and bots (machine-context) are the token models; webhooks push events instead of polling. The design skill this module tests is API SELECTION: map each requirement sentence to AXL, UDS, SXML, or Webex REST — and justify it with one architectural fact."
+    bullets:
+      - "Webex REST = Control Hub-managed estate: users, workspaces, devices, calling config, reports."
+      - "OAuth integration for user-context tools; bot token for autonomous services; webhooks for events."
+      - "Hybrid estates usually need TWO APIs: AXL for UCM depth + Webex REST for cloud objects."
+      - "Selection heuristic: WHO owns the object (UCM DB vs cloud) and WHO acts (admin vs user vs machine)."
+    worked_example: "GET https://webexapis.com/v1/devices with 'Authorization: Bearer <token>' → JSON inventory with connection status — the cloud twin of RisPort70. Mixed requirement: 'provision UCM phones for new hires AND order their cloud workspaces' = AXL (publisher, batched) + Webex REST (devices/workspaces) orchestrated by one middleware, each least-privilege."
+    exam_angle: "Requirement-to-API mapping table items: bulk UCM config→AXL; login lookup→UDS; live registration→RisPort70; cloud automation→Webex REST."
+decide_fast:
+  - requirement: "Bulk provision 5k phones on UCM"
+    answer: "AXL — publisher, batched, back-off"
+  - requirement: "Client finds home cluster at login"
+    answer: "UDS + ILS"
+  - requirement: "Live registration dashboard"
+    answer: "SXML RisPort70 (paced polling)"
+  - requirement: "Bulk read of device table"
+    answer: "AXL executeSQLQuery"
+  - requirement: "Cloud workspaces / device reports"
+    answer: "Webex REST + webhooks"
+scenario:
+  customer_ask: "A customer wants HR-driven provisioning (new hires get a phone + line by next morning), a self-service portal for users' own SNR settings, and a NOC wallboard of registration status across 3 ILS-linked clusters."
+  model_answer:
+    - "HR feed → middleware → AXL: publisher-targeted, queued writes 22:00–05:00, 2/sec pace, back-off on 503, pinned schema per cluster version."
+    - "Self-service → UDS self-care writes where supported; otherwise narrow AXL operations behind the portal with a least-privilege app user."
+    - "Wallboard → RisPort70 per cluster, 1,000 devices/query, 60 s sweep; validated first in SoapUI."
+    - "Per-cluster API inventory documented: versions, credentials, roles, throttle policy — that table is the design artifact."
+questions:
+  - id: Q1
+    type: multi_select
+    stem: "Why must the provisioning middleware target the publisher, and what two protections keep it from harming call processing?"
+    options:
+      - text: "AXL writes are serviced only by the publisher (owns the writable DB)"
+        correct: true
+      - text: "Batch/pace writes into maintenance windows"
+        correct: true
+      - text: "Detect AXL throttle (503) and back off exponentially"
+        correct: true
+      - text: "Spread writes across subscribers for load balancing"
+        correct: false
+  - id: Q2
+    type: multi_select
+    stem: "Webex App users log in with only a username across 3 clusters. Which API + which replication service make that work?"
+    options:
+      - text: "UDS answers the user lookup"
+        correct: true
+      - text: "ILS links clusters to resolve the user's home cluster"
+        correct: true
+      - text: "AXL performs the client login"
+        correct: false
+      - text: "The publisher must be reachable for every user login"
+        correct: false
+  - id: Q3
+    type: multi_select
+    stem: "A wallboard needs status of 30,000 devices. Which API, what per-query limit, and what polling design follows?"
+    options:
+      - text: "Serviceability XML RisPort70 (selectCmDevice)"
+        correct: true
+      - text: "1,000 devices per query → 30 queries per sweep"
+        correct: true
+      - text: "Poll AXL getPhone 30,000 times"
+        correct: false
+      - text: "AXL returns real-time registration status"
+        correct: false
+  - id: Q4
+    type: multi_select
+    stem: "Name the token models for Webex REST automation and when each is correct."
+    options:
+      - text: "Integration (OAuth authorization-code) tokens to act as a user"
+        correct: true
+      - text: "Bot tokens for autonomous machine identities"
+        correct: true
+      - text: "Webhooks so services react to events instead of polling"
+        correct: true
+      - text: "A personal access token from developer.webex.com in production"
+        correct: false
+sources:
+  - "https://developer.cisco.com/docs/axl-schema-reference/"
+  - "Design Module Training Guide, Module D2 (Cisco Learning — CCIE Collaboration)"
+  # Anchor every answer to the current Cisco doc — the exam source of truth.

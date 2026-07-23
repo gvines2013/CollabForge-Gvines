@@ -1,0 +1,30 @@
+# CollabForge item schema (informal). Validate new items against this shape.
+id: string            # e.g. D16
+domain: string        # "Domain 5 — Edge Services"
+title: string
+item_types:
+  scenario_qa: int
+  matrix: [string]        # related matrix item ids, or []
+  drag_and_drop: [string] # related DnD item ids, or []
+objectives: [string]
+topics:                 # exactly 5
+  - n: int
+    title: string
+    concept: string
+    bullets: [string]
+    worked_example: string
+    exam_angle: string
+decide_fast:
+  - requirement: string
+    answer: string
+scenario:
+  customer_ask: string
+  model_answer: [string]
+questions:              # 4 recommended
+  - id: string          # Q1..
+    type: multi_select
+    stem: string
+    options:
+      - text: string
+        correct: bool
+sources: [string]       # authoritative Cisco doc URLs

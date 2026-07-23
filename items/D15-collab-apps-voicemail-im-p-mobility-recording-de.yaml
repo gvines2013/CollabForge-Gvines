@@ -1,0 +1,128 @@
+id: D15
+domain: "Domain 7 — Collaboration Apps & Services"
+title: "Collab Apps: Voicemail, IM&P, Mobility & Recording Design"
+item_types:
+  scenario_qa: 4
+  matrix: []
+  drag_and_drop: []
+objectives:
+  - "Integrate Unity Connection voicemail with correct ports, partitions and routing rules."
+  - "Design on-prem IM&P/Jabber presence and federation building blocks."
+  - "Choose the right mobility feature: SNR, Extension Mobility, Extend & Connect, Device Mobility."
+  - "Select a call-recording architecture: built-in bridge, SIPREC, network-based, Media Proxy."
+topics:
+  - n: 1
+    title: "Unity Connection voicemail integration"
+    concept: "Unity Connection integrates with UCM over a SIP trunk (or SCCP ports) plus a voicemail pilot, profile and hunt/port design. Call and directory handlers, routing rules and partitions/search spaces steer callers to the right greeting and mailbox."
+    bullets:
+      - "Voicemail pilot + profile + MWI design must match the trunk integration."
+      - "Direct vs forwarded routing rules pick greeting/mailbox from the redirecting (diverting) number."
+      - "Partitions/CSS in Unity mirror UCM class-of-service for callers and subscribers."
+    worked_example: "Forwarded callers hit the opening greeting instead of a mailbox. Unity's forwarded routing rule was not reading the diverting number; aligning the SIP redirect header and the rule sends callers to the right mailbox."
+    exam_angle: "'Wrong greeting / no mailbox match' ties Unity routing rules to the diverting-number header (links to D9)."
+  - n: 2
+    title: "On-prem IM&P and Jabber"
+    concept: "Cisco IM&P provides presence and IM for Jabber, integrated with UCM (presence gateway, SIP trunk) and LDAP. Jabber service discovery finds IM&P, UCM and voicemail; federation extends presence to other domains."
+    bullets:
+      - "Jabber discovery: _cisco-uds / _collab-edge SRV → UDS/IM&P/voicemail config."
+      - "Presence gateway + SIP trunk between UCM and IM&P drive phone presence."
+      - "Inter-domain federation (SIP/XMPP) extends presence externally via Expressway."
+    worked_example: "Jabber shows phone presence but not on-call status. The UCM↔IM&P presence gateway/SIP trunk was missing; adding it lights up on-the-phone presence."
+    exam_angle: "Presence gaps map to the IM&P↔UCM integration (gateway/trunk), discovery maps to SRV records."
+  - n: 3
+    title: "Mobility: SNR, Extension Mobility, Extend & Connect, Device Mobility"
+    concept: "Each mobility feature solves a different need. Single Number Reach (Mobile Connect) rings a remote phone; Extension Mobility roams a user's profile to any phone; Extend & Connect controls a non-Cisco phone; Device Mobility adapts roaming device settings by physical location."
+    bullets:
+      - "SNR/Mobile Connect: one number rings desk + mobile via a remote destination."
+      - "Extension Mobility: login/logout to apply a device profile (hot-desking)."
+      - "Device Mobility: device pool/CSS adapt by IP subnet (roaming laptops/softphones)."
+    worked_example: "A hot-desking floor needs users' DNs to follow them. Extension Mobility with device profiles + a service URL lets users log into any phone and get their line, CSS and speed dials."
+    exam_angle: "Match the mobility feature to the requirement; SNR vs EM vs Device Mobility is the classic distractor set."
+  - n: 4
+    title: "Call recording architectures"
+    concept: "Recording can be done at the phone (built-in bridge forks media to a recorder), via SIPREC (the session border/CUBE forks a standards-based recording session), network-based, or through the CUBE Media Proxy. Choice depends on where media is anchored and compliance scope."
+    bullets:
+      - "Built-in bridge (BiB): phone forks media to the recorder — endpoint-anchored, needs supported phones."
+      - "SIPREC on CUBE: standards-based fork at the edge — ideal for trunk-side, carrier-grade recording."
+      - "CUBE Media Proxy centralizes media forking; secure recording adds SRTP to the recorder."
+    worked_example: "A contact center must record all PSTN calls regardless of endpoint. SIPREC on CUBE forks every trunk call to the recorder, independent of phone type — cleaner than BiB on each device."
+    exam_angle: "Recording items hinge on media anchor: endpoint (BiB) vs trunk/edge (SIPREC/Media Proxy)."
+  - n: 5
+    title: "Webex Bot from a Python skeleton"
+    concept: "The blueprint requires implementing a Webex bot from a provided Python skeleton. A bot is a machine identity (bot token) that uses the Webex REST API and webhooks to receive events and post messages — automation without impersonating a user."
+    bullets:
+      - "Bot token authenticates the bot; webhooks deliver message/room events."
+      - "Use least-privilege scopes; never ship a personal access token (12-hour, human identity)."
+      - "Typical loop: webhook → fetch message → act via REST → post response."
+    worked_example: "Given a skeleton, wire a webhook to the bot, parse the incoming message, call the REST API to post a reply — the same token/scope discipline from the API module (D2) applies."
+    exam_angle: "Bot items test token model + webhook event flow, not heavy coding — reuse the D2 API security reasoning."
+decide_fast:
+  - requirement: "Forwarded caller to right mailbox"
+    answer: "Unity routing rule + diverting number"
+  - requirement: "Jabber on-the-phone presence"
+    answer: "UCM↔IM&P presence gateway/trunk"
+  - requirement: "One number rings desk + mobile"
+    answer: "Single Number Reach (Mobile Connect)"
+  - requirement: "Hot-desking, DN follows user"
+    answer: "Extension Mobility profile"
+  - requirement: "Record all PSTN calls, any phone"
+    answer: "SIPREC on CUBE (trunk-anchored)"
+scenario:
+  customer_ask: "A customer needs voicemail that routes forwarded callers correctly, Jabber presence including on-call state, hot-desking, single-number reach for field staff, and compliant recording of all PSTN calls. Design the application layer."
+  model_answer:
+    - "Integrate Unity Connection with matching pilot/profile/MWI and forwarded routing rules that read the diverting number (ties to D9 headers)."
+    - "Deploy IM&P with the UCM presence gateway/SIP trunk and SRV-based Jabber discovery so phone and on-call presence work."
+    - "Use Extension Mobility for hot-desking and Single Number Reach for field staff — matched to each need, not one feature for all."
+    - "Record PSTN calls with SIPREC on CUBE (trunk-anchored, any endpoint) and secure the recording leg with SRTP."
+questions:
+  - id: Q1
+    type: multi_select
+    stem: "Field staff need their desk number to also ring their mobile, with one caller ID and seamless pull. Which feature, and what object carries the mobile?"
+    options:
+      - text: "Single Number Reach (Mobile Connect)"
+        correct: true
+      - text: "A Remote Destination carries the mobile number"
+        correct: true
+      - text: "It rings desk and mobile in parallel with the enterprise identity"
+        correct: true
+      - text: "Extension Mobility"
+        correct: false
+  - id: Q2
+    type: multi_select
+    stem: "Compliance requires recording every PSTN call regardless of phone model. Which recording architecture fits best and why not built-in bridge?"
+    options:
+      - text: "SIPREC on CUBE forks every trunk call to the recorder"
+        correct: true
+      - text: "It is endpoint-agnostic (works for any phone model)"
+        correct: true
+      - text: "Recording follows the trunk media anchor"
+        correct: true
+      - text: "Built-in bridge (BiB) on every phone"
+        correct: false
+  - id: Q3
+    type: multi_select
+    stem: "Jabber shows availability but never 'On the phone' when users are on a call. Which integration is missing?"
+    options:
+      - text: "The UCM ↔ IM&P presence gateway + SIP trunk"
+        correct: true
+      - text: "It publishes phone (on-call) state into the presence engine"
+        correct: true
+      - text: "Availability works from IM&P alone; device presence needs UCM"
+        correct: true
+      - text: "Re-checking LDAP or DNS"
+        correct: false
+  - id: Q4
+    type: multi_select
+    stem: "You must implement a Webex bot from a provided Python skeleton. What identity and event model does it use, and which token must never be used in production?"
+    options:
+      - text: "A bot token (machine identity) calling the Webex REST API"
+        correct: true
+      - text: "Webhooks deliver room / message events the bot reacts to"
+        correct: true
+      - text: "Use least-privilege scopes"
+        correct: true
+      - text: "A personal access token shipped in production"
+        correct: false
+sources:
+  - "Design Module Training Guide, Module D15 (Cisco Learning — CCIE Collaboration)"
+  # Anchor every answer to the current Cisco doc — the exam source of truth.

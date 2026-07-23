@@ -1,0 +1,130 @@
+id: D11
+domain: "Domain 3 — Call Control & Dial Plan"
+title: "Global Dial Plan & UCM Call Routing Design"
+item_types:
+  scenario_qa: 4
+  matrix: []
+  drag_and_drop:
+    - "DD3"
+objectives:
+  - "Design a +E.164 globalized core with localized user dialing habits at the edges."
+  - "Build partitions and calling search spaces that enforce class-of-service cleanly."
+  - "Use translation/transformation patterns, urgent priority and LRGs for site routing."
+  - "Apply Local Route Groups and Emergency Location Groups for tail-end-hop-off and E911."
+topics:
+  - n: 1
+    title: "Globalization vs localization"
+    concept: "Best practice routes the core in +E.164 (globalized) and converts to and from local dialing habits only at the edges. Incoming calling numbers are globalized for a consistent format; called numbers are localized to the gateway just before egress."
+    bullets:
+      - "Globalize the calling party (so callbacks from call history work everywhere) using incoming called/calling party settings."
+      - "Localize the called party at the route pattern / gateway with called-party transformations."
+      - "One global pattern set + per-site transforms beats per-site dial plans."
+    worked_example: "Missed-call callbacks fail at a branch because history stored a 4-digit number. Globalizing the calling party to +E.164 on ingress makes every logged number diallable from any device."
+    exam_angle: "A 'callback from history fails' symptom is a globalization-of-calling-party design gap."
+  - n: 2
+    title: "Partitions and Calling Search Spaces"
+    concept: "A partition is a group of dialable patterns; a CSS is an ordered list of partitions a device may reach. Together they implement class of service: what a phone can call is the intersection of its line/device CSS and the partitions that hold each pattern."
+    bullets:
+      - "Order matters: the first matching pattern across the CSS wins (with urgent priority as the override)."
+      - "Line/device CSS combine — design which carries class-of-service vs which carries device/feature reachability."
+      - "Block patterns (e.g., 1-900) live in a partition only privileged CSSes include."
+    worked_example: "Lobby phones can dial international numbers. The device CSS included an Intl partition; removing it (or moving Intl to a privileged CSS only) enforces the intended class of service without touching patterns."
+    exam_angle: "Class-of-service items are solved by CSS/partition membership, not by editing route patterns."
+  - n: 3
+    title: "Translation & transformation patterns, urgent priority"
+    concept: "Translation patterns re-write the called number and re-route through a CSS before route selection; transformation patterns only re-format calling/called numbers without routing. Urgent priority forces an immediate match, stopping interdigit timeout."
+    bullets:
+      - "Use translation patterns for abbreviated/feature dialing (e.g., 0 → operator) and to steer into a different CSS."
+      - "Mark variable-length or overlapping patterns urgent so a complete short number routes without waiting (e.g., emergency)."
+      - "Transformations (calling/called party) tidy presentation and localization at the edge."
+    worked_example: "Dialing 911 waits for interdigit timeout because 9.11 overlaps 9.1[2-9]XX. Marking the emergency translation pattern urgent removes the delay — a safety-critical fix."
+    exam_angle: "Any 'dialing X is slow / waits' item points at urgent priority on an overlapping pattern."
+  - n: 4
+    title: "Local Route Groups and path selection"
+    concept: "A Local Route Group decouples route patterns from physical gateways: the route pattern points at the LRG 'Standard Local Route Group', and the device pool binds that to the site's actual gateway. One PSTN pattern then serves every site."
+    bullets:
+      - "Device Pool → Local Route Group setting selects the egress gateway per site."
+      - "Collapses dozens of site route patterns into one globalized pattern + LRG."
+      - "Path selection adds route lists/groups for priority and overflow between gateways."
+    worked_example: "A 50-site org had 50 PSTN route patterns. Re-pointing one +E.164 pattern to Standard Local Route Group and setting each device pool's LRG yields local breakout everywhere from a single pattern."
+    exam_angle: "'Calls egress at the wrong site / one pattern for all sites' is a Local Route Group design."
+  - n: 5
+    title: "Emergency call routing: ELG and E911 design"
+    concept: "Emergency calls must egress the gateway nearest the caller and present a location-accurate callback number. Emergency Location (ELIN) groups, device-pool LRG and (optionally) Emergency Responder map a device to the right PSAP trunk and ELIN."
+    bullets:
+      - "Egress the local gateway via LRG so the PSAP sees a local origin."
+      - "Present a valid ELIN/callback DID so emergency services can call back."
+      - "Mark the emergency pattern urgent and test from every device type."
+    worked_example: "A remote-site phone's 911 call exits the HQ gateway, reaching the wrong PSAP. Binding the site device pool's Local Route Group to the local gateway and assigning the correct ELIN fixes jurisdiction and callback."
+    exam_angle: "E911 'wrong PSAP / wrong callback' items combine LRG egress + ELIN, never a single checkbox."
+decide_fast:
+  - requirement: "Consistent core number format"
+    answer: "Globalize to +E.164, localize at edge"
+  - requirement: "Enforce class of service"
+    answer: "Partition + CSS membership"
+  - requirement: "Short/overlapping number is slow"
+    answer: "Urgent priority on the pattern"
+  - requirement: "One PSTN pattern for all sites"
+    answer: "Standard Local Route Group + device pool"
+  - requirement: "911 to the correct PSAP + callback"
+    answer: "Local gateway via LRG + ELIN"
+scenario:
+  customer_ask: "A 40-site enterprise has per-site route patterns, slow 911 dialing, callbacks from history that fail at branches, and lobby phones that can dial international. Re-architect the dial plan."
+  model_answer:
+    - "Globalize calling/called to +E.164 in the core; localize called-party at each gateway so history callbacks work and formats are uniform."
+    - "Replace per-site patterns with one +E.164 pattern pointing at Standard Local Route Group; set each device pool's LRG for local breakout."
+    - "Mark the emergency translation pattern urgent and route 911 out the local gateway with the correct ELIN/callback."
+    - "Fix class of service through CSS/partition membership — remove the Intl partition from public-area device CSSes."
+questions:
+  - id: Q1
+    type: multi_select
+    stem: "An enterprise wants ONE PSTN route pattern that breaks out locally at every site. Which UCM construct makes this possible and where is the per-site choice made?"
+    options:
+      - text: "The route pattern targets Standard Local Route Group"
+        correct: true
+      - text: "Each site's Device Pool maps the LRG to its local gateway"
+        correct: true
+      - text: "LRGs decouple routing logic from physical gateways"
+        correct: true
+      - text: "Build a separate route pattern + route list per site"
+        correct: false
+  - id: Q2
+    type: multi_select
+    stem: "Dialing 911 waits several seconds before routing. What is the cause and the one-setting fix?"
+    options:
+      - text: "An overlapping pattern triggers the interdigit timeout"
+        correct: true
+      - text: "Mark the 911 pattern with Urgent Priority"
+        correct: true
+      - text: "Urgent priority forces an immediate match"
+        correct: true
+      - text: "Shorten the global interdigit timer"
+        correct: false
+  - id: Q3
+    type: multi_select
+    stem: "Callbacks from a branch user's call history fail, though the same numbers dial fine when typed in full. Which design principle was missed?"
+    options:
+      - text: "Globalize the calling party to +E.164 at ingress"
+        correct: true
+      - text: "History then stores diallable +E.164 numbers"
+        correct: true
+      - text: "Localization happens only at egress"
+        correct: true
+      - text: "Edit each branch's translation patterns for callbacks"
+        correct: false
+  - id: Q4
+    type: multi_select
+    stem: "Public lobby phones can place international calls. Without touching any route pattern, how do you enforce the correct class of service?"
+    options:
+      - text: "Remove the international partition from the lobby phones' CSS"
+        correct: true
+      - text: "Class of service = the intersection of CSS and partition"
+        correct: true
+      - text: "Place Intl patterns in a partition only privileged CSSes include"
+        correct: true
+      - text: "Delete or block the international route pattern"
+        correct: false
+sources:
+  - "https://www.cisco.com/c/en/us/td/docs/voice_ip_comm/cucm/admin/11_5_1/sysConfig/CUCM_BK_SE5DAF88_00_cucm-system-configuration-guide-1151/CUCM_BK_SE5DAF88_00_cucm-system-configuration-guide-1151_chapter_011100.html"
+  - "Design Module Training Guide, Module D11 (Cisco Learning — CCIE Collaboration)"
+  # Anchor every answer to the current Cisco doc — the exam source of truth.
