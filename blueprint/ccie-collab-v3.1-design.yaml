@@ -42,6 +42,9 @@ domains:
       - id: D12
         title: "CUBE Dial-Peers, Normalization & Survivability Design"
         file: items/D12-cube-dial-peers-normalization-survivability-desi.yaml
+        id: D13
+        title: partitions and css design
+        file: items/D13-partitions-and-css design.yaml
   - name: "Domain 4 — Endpoints & User Management"
     weight: "10%"
     items:
